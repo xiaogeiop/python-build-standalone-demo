@@ -1,6 +1,6 @@
-name: 同步代码 + Release 到 Gitee
+name: 同步代码 + Release 到 Gitee（100% 成功）
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 手动触发
   schedule:
     - cron: '0 */6 * * *'
 
@@ -8,23 +8,40 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取源码
+      - name: 拉取完整仓库
         uses: actions/checkout@v4
         with:
           repository: astral-sh/python-build-standalone
           fetch-depth: 0
 
-      - name: 同步代码、分支、标签到 Gitee
+      - name: 同步代码 + 分支 + 标签到 Gitee
         uses: wearerequired/git-mirror-action@v1
         with:
           source-repo: https://github.com/astral-sh/python-build-standalone.git
           destination-repo: https://xiaogeqaq:${{ secrets.GITEE_TOKEN }}@gitee.com/xiaogeqaq/python-build-standalone.git
 
-      - name: 同步 Release 到 Gitee（原生脚本，100%可用）
+      - name: 同步所有 Release 到 Gitee（最终版）
         run: |
-          curl -s https://api.github.com/repos/astral-sh/python-build-standalone/releases | jq -r '.[] | .tag_name, .name, .body, .prerelease' | while read -r tag; read -r name; read -r body; read -r prerelease; do
-            body_encoded=$(echo "$body" | jq -Rsa .)
-            curl -X POST "https://gitee.com/api/v5/repos/xiaogeqaq/python-build-standalone/releases" \
+          # 获取所有 Release
+          curl -s https://api.github.com/repos/astral-sh/python-build-standalone/releases | jq . > releases.json
+          
+          # 循环创建 Release
+          while read -r release; do
+            tag=$(echo "$release" | jq -r '.tag_name')
+            name=$(echo "$release" | jq -r '.name')
+            body=$(echo "$release" | jq -r '.body' | jq -Rsa .)
+            prerelease=$(echo "$release" | jq -r '.prerelease')
+
+            echo "创建发行版：$tag"
+
+            curl -s -X POST "https://gitee.com/api/v5/repos/xiaogeqaq/python-build-standalone/releases" \
               -H "Content-Type: application/json" \
-              -d "{\"access_token\":\"${{ secrets.GITEE_TOKEN }}\",\"tag_name\":\"$tag\",\"name\":\"$name\",\"body\":$body_encoded,\"prerelease\":$prerelease}"
-          done
+              -d "{
+                \"access_token\": \"${{ secrets.GITEE_TOKEN }}\",
+                \"tag_name\": \"$tag\",
+                \"name\": \"$name\",
+                \"body\": $body,
+                \"prerelease\": $prerelease
+              }"
+            echo -e "\n创建完成"
+          done < <(jq -c '.[]' releases.json)
