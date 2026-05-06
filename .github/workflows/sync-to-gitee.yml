@@ -1,6 +1,6 @@
-name: 同步代码 + Release 到 Gitee（100% 成功）
+name: 同步代码 + Release 到 Gitee（修复版）
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
 
@@ -20,19 +20,22 @@ jobs:
           source-repo: https://github.com/astral-sh/python-build-standalone.git
           destination-repo: https://xiaogeqaq:${{ secrets.GITEE_TOKEN }}@gitee.com/xiaogeqaq/python-build-standalone.git
 
-      - name: 同步所有 Release 到 Gitee（最终版）
+      - name: 同步所有 Release 到 Gitee（修复版）
         run: |
+          # 安装 jq
+          sudo apt-get update && sudo apt-get install -y jq
+          
           # 获取所有 Release
-          curl -s https://api.github.com/repos/astral-sh/python-build-standalone/releases | jq . > releases.json
+          curl -s https://api.github.com/repos/astral-sh/python-build-standalone/releases > releases.json
           
           # 循环创建 Release
-          while read -r release; do
+          cat releases.json | jq -c '.[]' | while read -r release; do
             tag=$(echo "$release" | jq -r '.tag_name')
             name=$(echo "$release" | jq -r '.name')
-            body=$(echo "$release" | jq -r '.body' | jq -Rsa .)
+            body=$(echo "$release" | jq -r '.body' | jq -sR .)
             prerelease=$(echo "$release" | jq -r '.prerelease')
 
-            echo "创建发行版：$tag"
+            echo "正在创建发行版：$tag"
 
             curl -s -X POST "https://gitee.com/api/v5/repos/xiaogeqaq/python-build-standalone/releases" \
               -H "Content-Type: application/json" \
@@ -43,5 +46,5 @@ jobs:
                 \"body\": $body,
                 \"prerelease\": $prerelease
               }"
-            echo -e "\n创建完成"
-          done < <(jq -c '.[]' releases.json)
+            echo "发行版 $tag 创建完成"
+          done
