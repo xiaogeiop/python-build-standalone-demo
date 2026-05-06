@@ -1,4 +1,4 @@
-name: Sync GitHub to Gitee
+name: 同步代码 + Release 到 Gitee
 on:
   workflow_dispatch:
   schedule:
@@ -8,14 +8,22 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source repo
+      - name: 拉取完整仓库
         uses: actions/checkout@v4
         with:
           repository: astral-sh/python-build-standalone
           fetch-depth: 0
 
-      - name: Sync code to Gitee
+      - name: 同步代码 + 分支 + 标签到 Gitee
         uses: wearerequired/git-mirror-action@v1
         with:
           source-repo: https://github.com/astral-sh/python-build-standalone.git
           destination-repo: https://xiaogeqaq:${{ secrets.GITEE_TOKEN }}@gitee.com/xiaogeqaq/python-build-standalone.git
+
+      - name: 同步所有 Release 到 Gitee
+        uses: yumyushi/github-release-sync@v1.0.1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          SOURCE_REPO: astral-sh/python-build-standalone
+          TARGET_REPO: xiaogeqaq/python-build-standalone
