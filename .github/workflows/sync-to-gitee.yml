@@ -1,29 +1,21 @@
-name: 同步 GitHub 仓库到 Gitee（含 Release 和 tar.gz）
+name: Sync GitHub to Gitee
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'   # 每小时自动同步一次
-  workflow_dispatch:      # 支持手动点击运行
+    - cron: '0 */6 * * *'
 
 jobs:
-  sync-code-and-releases:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取上游仓库（astral-sh/python-build-standalone）
+      - name: Checkout source repo
         uses: actions/checkout@v4
         with:
           repository: astral-sh/python-build-standalone
-          fetch-depth: 0  # 必须设为 0，才能同步完整历史和标签
+          fetch-depth: 0
 
-      - name: 同步代码、分支、标签到 Gitee
+      - name: Sync code to Gitee
         uses: wearerequired/git-mirror-action@v1
         with:
           source-repo: https://github.com/astral-sh/python-build-standalone.git
           destination-repo: https://xiaogeqaq:${{ secrets.GITEE_TOKEN }}@gitee.com/xiaogeqaq/python-build-standalone.git
-
-      - name: 同步所有 Release 和 tar.gz 附件
-        uses: trustedinster/sync-github-release-to-gitee@v1.3
-        with:
-          github-repo: astral-sh/python-build-standalone
-          gitee-owner: xiaogeqaq
-          gitee-repo: python-build-standalone
-          gitee-token: ${{ secrets.GITEE_TOKEN }}
