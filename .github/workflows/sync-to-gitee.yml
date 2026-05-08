@@ -28,5 +28,5 @@ jobs:
           # 强制同步
           force_update: true
           # 要同步的仓库名（可选，不配置则同步所有）
-          static_list: "https://github.com/astral-sh/python-build-standalone.git"
+          static_list: "python-build-standalone"
           debug: true
