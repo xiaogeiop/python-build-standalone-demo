@@ -1,50 +1,32 @@
-name: 同步代码 + Release 到 Gitee（修复版）
+name: Sync to Gitee (Token Only)
+
 on:
-  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+  # 可选：定时同步
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 0 * * *'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取完整仓库
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          repository: astral-sh/python-build-standalone
           fetch-depth: 0
 
-      - name: 同步代码 + 分支 + 标签到 Gitee
-        uses: wearerequired/git-mirror-action@v1
+      - name: Mirror to Gitee (Token only)
+        uses: Yikun/hub-mirror-action@master
         with:
-          source-repo: https://github.com/astral-sh/python-build-standalone.git
-          destination-repo: https://xiaogeqaq:${{ secrets.GITEE_TOKEN }}@gitee.com/xiaogeqaq/python-build-standalone.git
-
-      - name: 同步所有 Release 到 Gitee（修复版）
-        run: |
-          # 安装 jq
-          sudo apt-get update && sudo apt-get install -y jq
-          
-          # 获取所有 Release
-          curl -s https://api.github.com/repos/astral-sh/python-build-standalone/releases > releases.json
-          
-          # 循环创建 Release
-          cat releases.json | jq -c '.[]' | while read -r release; do
-            tag=$(echo "$release" | jq -r '.tag_name')
-            name=$(echo "$release" | jq -r '.name')
-            body=$(echo "$release" | jq -r '.body' | jq -sR .)
-            prerelease=$(echo "$release" | jq -r '.prerelease')
-
-            echo "正在创建发行版：$tag"
-
-            curl -s -X POST "https://gitee.com/api/v5/repos/xiaogeqaq/python-build-standalone/releases" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"access_token\": \"${{ secrets.GITEE_TOKEN }}\",
-                \"tag_name\": \"$tag\",
-                \"name\": \"$name\",
-                \"body\": $body,
-                \"prerelease\": $prerelease
-              }"
-            echo "发行版 $tag 创建完成"
-          done
+          # 你的 GitHub 用户名/组织名
+          src: xiaogeiop
+          # 你的 Gitee 用户名
+          dst: guoyunfei
+          # 只需配置 token，无需 dst_key
+          dst_token: ${{ secrets.GITEE_TOKEN }}
+          # 强制同步
+          force_update: true
+          # 要同步的仓库名（可选，不配置则同步所有）
+          static_list: "https://github.com/astral-sh/python-build-standalone.git"
+          debug: true
