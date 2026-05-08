@@ -1,32 +1,26 @@
-name: Sync to Gitee (Token Only)
+name: Sync to Gitee
 
 on:
   push:
     branches: [ "main", "master" ]
-  # 可选：定时同步
-  schedule:
-    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Mirror to Gitee (Token only)
+      - name: Mirror to Gitee
         uses: Yikun/hub-mirror-action@master
         with:
-          # 你的 GitHub 用户名/组织名
           src: github/xiaogeiop
-          # 你的 Gitee 用户名
           dst: gitee/guoyunfei
-          # 只需配置 token，无需 dst_key
+          # ✅ 添加 GitHub Token（使用 Actions 自动生成的 token）
+          src_token: ${{ secrets.GITHUB_TOKEN }}
           dst_token: ${{ secrets.GITEE_TOKEN }}
-          # 强制同步
           force_update: true
-          # 要同步的仓库名（可选，不配置则同步所有）
           static_list: "python-build-standalone"
           debug: true
