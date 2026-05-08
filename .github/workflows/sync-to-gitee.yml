@@ -1,26 +1,156 @@
-name: Sync to Gitee
+name: Sync Release Assets to Gitee
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
+  release:
+    types: [published, edited]  # 发布或编辑时触发
+  workflow_dispatch:            # 手动触发
+    inputs:
+      tag_name:
+        description: 'Release Tag Name'
+        required: true
+        type: string
 
 jobs:
-  sync:
+  sync-assets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Mirror to Gitee
-        uses: Yikun/hub-mirror-action@master
-        with:
-          src: github/xiaogeiop
-          dst: gitee/guoyunfei
-          # ✅ 添加 GitHub Token（使用 Actions 自动生成的 token）
-          src_token: ${{ secrets.GITHUB_TOKEN }}
-          dst_token: ${{ secrets.GITEE_TOKEN }}
-          force_update: true
-          static_list: "python-build-standalone"
-          debug: true
+      - name: Sync release assets to Gitee
+        env:
+          # GitHub Token（需要访问 release 的权限）
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Gitee Token（需要创建 release 和上传附件的权限）
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          # 配置信息
+          GITHUB_REPO: "astral-sh/python-build-standalone"
+          GITEE_OWNER: "guoyunfei"
+          GITEE_REPO: "python-build-standalone"
+        run: |
+          set -e
+          
+          # 获取 tag_name
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          fi
+          
+          echo "Syncing release: $TAG_NAME"
+          
+          # ========== 第一步：获取 GitHub Release 的所有附件 ==========
+          echo "Fetching release info from GitHub..."
+          
+          # 获取 release_id
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TAG_NAME" | \
+            jq -r '.id')
+          
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "Error: Release $TAG_NAME not found on GitHub"
+            exit 1
+          fi
+          
+          # 获取附件列表
+          ASSETS=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPO/releases/$RELEASE_ID/assets")
+          
+          ASSET_COUNT=$(echo "$ASSETS" | jq '. | length')
+          echo "Found $ASSET_COUNT assets"
+          
+          if [ "$ASSET_COUNT" -eq 0 ]; then
+            echo "No assets to sync"
+            exit 0
+          fi
+          
+          # ========== 第二步：检查/创建 Gitee Release ==========
+          echo "Checking Gitee release..."
+          
+          # 检查 release 是否存在
+          GITEE_RELEASE=$(curl -s \
+            -H "Authorization: token $GITEE_TOKEN" \
+            "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases/tags/$TAG_NAME")
+          
+          GITEE_RELEASE_ID=$(echo "$GITEE_RELEASE" | jq -r '.id')
+          
+          if [ "$GITEE_RELEASE_ID" = "null" ] || [ -z "$GITEE_RELEASE_ID" ]; then
+            echo "Creating release on Gitee..."
+            
+            # 获取 GitHub Release 的描述信息
+            RELEASE_BODY=$(curl -s \
+              -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TAG_NAME" | \
+              jq -r '.body')
+            
+            # 创建 release
+            CREATE_RESULT=$(curl -s -X POST \
+              -H "Authorization: token $GITEE_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"tag_name\": \"$TAG_NAME\",
+                \"name\": \"$TAG_NAME\",
+                \"body\": $(echo "$RELEASE_BODY" | jq -Rs .),
+                \"prerelease\": false
+              }" \
+              "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases")
+            
+            GITEE_RELEASE_ID=$(echo "$CREATE_RESULT" | jq -r '.id')
+            echo "Created release with ID: $GITEE_RELEASE_ID"
+          else
+            echo "Release already exists on Gitee"
+          fi
+          
+          # ========== 第三步：下载并上传每个附件 ==========
+          echo "Downloading and uploading assets..."
+          
+          # 创建临时目录
+          mkdir -p /tmp/assets
+          cd /tmp/assets
+          
+          # 遍历每个附件
+          echo "$ASSETS" | jq -c '.[]' | while read -r asset; do
+            NAME=$(echo "$asset" | jq -r '.name')
+            URL=$(echo "$asset" | jq -r '.browser_download_url')
+            SIZE=$(echo "$asset" | jq -r '.size')
+            
+            echo ""
+            echo "Processing: $NAME ($(numfmt --to=iec $SIZE))"
+            
+            # 检查 Gitee 是否已有同名附件
+            EXISTING=$(curl -s \
+              -H "Authorization: token $GITEE_TOKEN" \
+              "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases/$GITEE_RELEASE_ID/assets" | \
+              jq -r ".[] | select(.name == \"$NAME\") | .id")
+            
+            if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+              echo "  Asset already exists on Gitee, skipping..."
+              continue
+            fi
+            
+            # 下载附件
+            echo "  Downloading..."
+            curl -L -o "$NAME" "$URL" --progress-bar
+            
+            # 上传到 Gitee
+            echo "  Uploading to Gitee..."
+            UPLOAD_RESULT=$(curl -s -X POST \
+              -H "Authorization: token $GITEE_TOKEN" \
+              -F "file=@$NAME" \
+              "https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO/releases/$GITEE_RELEASE_ID/attach_files")
+            
+            UPLOAD_STATE=$(echo "$UPLOAD_RESULT" | jq -r '.state // .error')
+            if [ "$UPLOAD_STATE" = "uploading" ] || [ "$UPLOAD_STATE" = "success" ]; then
+              echo "  ✓ Uploaded successfully"
+            else
+              echo "  ✗ Upload failed: $UPLOAD_RESULT"
+            fi
+            
+            # 清理下载的文件
+            rm -f "$NAME"
+          done
+          
+          echo ""
+          echo "Sync completed!"
