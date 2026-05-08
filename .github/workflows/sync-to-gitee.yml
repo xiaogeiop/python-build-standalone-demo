@@ -20,9 +20,9 @@ jobs:
         uses: Yikun/hub-mirror-action@master
         with:
           # 你的 GitHub 用户名/组织名
-          src: xiaogeiop
+          src: github/xiaogeiop
           # 你的 Gitee 用户名
-          dst: guoyunfei
+          dst: gitee/guoyunfei
           # 只需配置 token，无需 dst_key
           dst_token: ${{ secrets.GITEE_TOKEN }}
           # 强制同步
